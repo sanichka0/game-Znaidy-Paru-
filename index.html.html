@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Знайди пару 🏆</title>
+
+  <!-- Open Graph — для Telegram, Viber, Facebook, Discord тощо -->
+  <meta property="og:title" content="🏆 Знайди пару — гра для класу">
+  <meta property="og:description" content="Весела гра на пам'ять для кількох гравців. Знаходь пари карток швидше за всіх!">
+  <meta property="og:image" content="logo.svg">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="🏆 Знайди пару — гра для класу">
+  <meta name="twitter:image" content="logo.svg">
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Nunito', sans-serif; box-sizing: border-box; }
+
+    .card { perspective: 1000px; cursor: pointer; }
+    .card-inner {
+      position: relative; width: 100%; height: 100%;
+      transition: transform 0.45s cubic-bezier(.4,2,.55,1);
+      transform-style: preserve-3d;
+    }
+    .card.flipped .card-inner { transform: rotateY(180deg); }
+    .card-front, .card-back {
+      position: absolute; width: 100%; height: 100%;
+      backface-visibility: hidden; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .card-front {
+      background: linear-gradient(135deg,#667eea,#764ba2);
+      box-shadow: 0 4px 15px rgba(102,126,234,.45);
+      transition: box-shadow .2s, filter .2s;
+    }
+    .card-back {
+      background: linear-gradient(135deg,#f093fb,#f5576c);
+      transform: rotateY(180deg);
+    }
+    .card.matched .card-back {
+      background: linear-gradient(135deg,#11998e,#38ef7d);
+      box-shadow: 0 4px 20px rgba(56,239,125,.5);
+    }
+    .card:not(.flipped):not(.matched):hover .card-front {
+      filter: brightness(1.2);
+      box-shadow: 0 8px 25px rgba(102,126,234,.7);
+    }
+    .card-num {
+      position:absolute; top:3px; left:5px;
+      font-size:.55rem; color:rgba(255,255,255,.6); font-weight:700;
+    }
+
+    @keyframes flyIn {
+      0%   { opacity:0; transform:translate(var(--tx),var(--ty)) scale(.2) rotate(var(--rot)); }
+      100% { opacity:1; transform:translate(0,0) scale(1) rotate(0deg); }
+    }
+    .fly-in { animation: flyIn .55s cubic-bezier(.22,.68,0,1.2) both; }
+
+    @keyframes pulse {
+      0%,100%{ transform:scale(1); }
+      50%    { transform:scale(1.14); }
+    }
+    .celebrating { animation: pulse .4s ease-in-out 3; }
+
+    @keyframes cfFall {
+      0%  { transform:translateY(-20px) rotate(0deg); opacity:1; }
+      100%{ transform:translateY(110vh) rotate(720deg); opacity:0; }
+    }
+    .confetti {
+      position:fixed; pointer-events:none; z-index:9998;
+      animation: cfFall var(--dur) var(--delay) linear forwards;
+    }
+
+    .player-badge { transition: all .3s; border: 3px solid transparent; }
+    .player-badge.active {
+      border-color:#ffd700;
+      box-shadow: 0 0 18px rgba(255,215,0,.7), 0 0 35px rgba(255,215,0,.3);
+      transform: scale(1.08);
+    }
+
+    #win-content {
+      transform:scale(0);
+      transition:transform .5s cubic-bezier(.34,1.56,.64,1);
+    }
+    #win-content.visible { transform:scale(1); }
+
+    .opt-btn { transition:all .25s; border:3px solid transparent; }
+    .opt-btn.selected {
+      border-color:#ffd700;
+      box-shadow:0 0 16px rgba(255,215,0,.55);
+      transform:scale(1.04);
+    }
+
+    .diff-btn { transition:all .25s; border:3px solid transparent; }
+    .diff-btn.selected { border-color:#fff; transform:scale(1.05); }
+
+    input[type=text]:focus { box-shadow:0 0 0 3px rgba(167,139,250,.5); outline:none; }
+
+  input[type=range] { -webkit-appearance:none; appearance:none; }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; appearance:none;
+    width:22px; height:22px; border-radius:50%;
+    background: linear-gradient(135deg,#a78bfa,#7c3aed);
+    box-shadow:0 2px 8px rgba(124,58,237,.5);
+    cursor:pointer; border:2px solid #fff;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:22px; height:22px; border-radius:50%;
+    background: linear-gradient(135deg,#a78bfa,#7c3aed);
+    box-shadow:0 2px 8px rgba(124,58,237,.5);
+    cursor:pointer; border:2px solid #fff;
+  }
+
+    ::-webkit-scrollbar { width:5px; }
+    ::-webkit-scrollbar-thumb { background:rgba(255,255,255,.2); border-radius:3px; }
+
+    .screen { display:none; }
+    .screen.active { display:flex; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-800">
+
+<!-- ════════════════════════
+     ЕКРАН 1 — НАЛАШТУВАННЯ
+════════════════════════ -->
+<div id="setup-screen" class="screen active min-h-screen flex-col items-center justify-start px-4 py-8 overflow-auto">
+
+  <div class="flex justify-center mb-2">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" width="320" height="160">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#1a1a2e"/>
+          <stop offset="50%" style="stop-color:#16213e"/>
+          <stop offset="100%" style="stop-color:#0f3460"/>
+        </linearGradient>
+        <linearGradient id="card1" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#667eea"/>
+          <stop offset="100%" style="stop-color:#764ba2"/>
+        </linearGradient>
+        <linearGradient id="card2" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#11998e"/>
+          <stop offset="100%" style="stop-color:#38ef7d"/>
+        </linearGradient>
+        <linearGradient id="card3" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#f093fb"/>
+          <stop offset="100%" style="stop-color:#f5576c"/>
+        </linearGradient>
+        <linearGradient id="titleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" style="stop-color:#a78bfa"/>
+          <stop offset="50%" style="stop-color:#f9a8d4"/>
+          <stop offset="100%" style="stop-color:#fbbf24"/>
+        </linearGradient>
+        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="rgba(0,0,0,0.4)"/>
+        </filter>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+          <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <rect width="400" height="200" rx="20" fill="url(#bg)"/>
+      <circle cx="350" cy="30" r="60" fill="rgba(167,139,250,0.07)"/>
+      <circle cx="50" cy="170" r="50" fill="rgba(249,168,212,0.07)"/>
+      <g transform="translate(30, 55)" filter="url(#shadow)">
+        <rect width="72" height="90" rx="10" fill="url(#card1)"/>
+        <text x="36" y="52" font-size="32" text-anchor="middle" dominant-baseline="middle" fill="white">?</text>
+        <text x="6" y="14" font-size="9" fill="rgba(255,255,255,0.6)" font-family="Arial" font-weight="700">01</text>
+      </g>
+      <g transform="translate(115, 40)" filter="url(#shadow)">
+        <rect width="72" height="90" rx="10" fill="url(#card2)"/>
+        <text x="36" y="48" font-size="34" text-anchor="middle" dominant-baseline="middle">⚽</text>
+        <text x="6" y="14" font-size="9" fill="rgba(255,255,255,0.6)" font-family="Arial" font-weight="700">05</text>
+      </g>
+      <g transform="translate(200, 40)" filter="url(#shadow)">
+        <rect width="72" height="90" rx="10" fill="url(#card2)"/>
+        <text x="36" y="48" font-size="34" text-anchor="middle" dominant-baseline="middle">⚽</text>
+        <text x="6" y="14" font-size="9" fill="rgba(255,255,255,0.6)" font-family="Arial" font-weight="700">12</text>
+      </g>
+      <g transform="translate(285, 55)" filter="url(#shadow)">
+        <rect width="72" height="90" rx="10" fill="url(#card3)"/>
+        <text x="36" y="52" font-size="32" text-anchor="middle" dominant-baseline="middle" fill="white">?</text>
+        <text x="6" y="14" font-size="9" fill="rgba(255,255,255,0.6)" font-family="Arial" font-weight="700">08</text>
+      </g>
+      <text x="190" y="88" font-size="16" text-anchor="middle" filter="url(#glow)">✨</text>
+      <text x="200" y="168" font-size="26" font-weight="900" text-anchor="middle"
+        font-family="Arial Rounded MT Bold, Arial, sans-serif"
+        fill="url(#titleGrad)" filter="url(#shadow)">🏆 ЗНАЙДИ ПАРУ 🏆</text>
+    </svg>
+  </div>
+  <p class="text-purple-200 text-center mb-6 text-lg">Налаштування гри</p>
+
+  <div class="w-full max-w-2xl space-y-5">
+
+    <!-- Гравці -->
+    <div class="bg-white/10 backdrop-blur rounded-3xl p-5 shadow-xl">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-white font-black text-xl">👥 Гравці <span id="player-count-label" class="text-purple-300 text-base font-semibold">(2)</span></h2>
+        <div class="flex gap-2">
+          <button id="remove-player-btn" class="bg-white/20 hover:bg-red-400/60 text-white font-black w-9 h-9 rounded-full transition text-xl leading-none">−</button>
+          <button id="add-player-btn"    class="bg-white/20 hover:bg-green-400/60 text-white font-black w-9 h-9 rounded-full transition text-xl leading-none">+</button>
+        </div>
+      </div>
+      <div id="players-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-64 overflow-y-auto pr-1"></div>
+      <p class="text-purple-300 text-xs mt-3 text-center">Мінімум 2 гравці • кількість необмежена</p>
+    </div>
+
+    <!-- Складність -->
+    <div class="bg-white/10 backdrop-blur rounded-3xl p-5 shadow-xl">
+      <h2 class="text-white font-black text-xl mb-4">🎮 Складність</h2>
+      <div class="grid grid-cols-3 gap-3">
+        <button class="diff-btn selected bg-gradient-to-br from-green-400 to-emerald-600 text-white font-bold py-3 rounded-xl text-sm" data-diff="easy">🟢<br>Легкий<br><span class="text-xs opacity-80">4×4</span></button>
+        <button class="diff-btn bg-gradient-to-br from-yellow-400 to-orange-500 text-white font-bold py-3 rounded-xl text-sm" data-diff="medium">🟡<br>Середній<br><span class="text-xs opacity-80">5×4</span></button>
+        <button class="diff-btn bg-gradient-to-br from-red-500 to-rose-700 text-white font-bold py-3 rounded-xl text-sm" data-diff="hard">🔴<br>Важкий<br><span class="text-xs opacity-80">6×6</span></button>
+      </div>
+    </div>
+
+    <!-- Режим ходу -->
+    <div class="bg-white/10 backdrop-blur rounded-3xl p-5 shadow-xl">
+      <h2 class="text-white font-black text-xl mb-4">🔄 Правило ходу після помилки</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <button class="opt-btn selected bg-white/15 hover:bg-white/25 text-white font-bold py-4 px-4 rounded-xl text-left" data-mode="rotate">
+          <div class="text-3xl mb-1">🔁</div>
+          <div class="font-black text-base">Хід переходить</div>
+          <div class="text-xs text-purple-200 mt-1">Після помилки ходить наступний гравець</div>
+        </button>
+        <button class="opt-btn bg-white/15 hover:bg-white/25 text-white font-bold py-4 px-4 rounded-xl text-left" data-mode="streak">
+          <div class="text-3xl mb-1">🔥</div>
+          <div class="font-black text-base">Серія ходів</div>
+          <div class="text-xs text-purple-200 mt-1">Гравець ходить поки не помилиться</div>
+        </button>
+      </div>
+    </div>
+
+    <!-- Гучність -->
+    <div class="bg-white/10 backdrop-blur rounded-3xl p-5 shadow-xl">
+      <h2 class="text-white font-black text-xl mb-4">🔊 Гучність звуку</h2>
+      <div class="flex items-center gap-4">
+        <span class="text-2xl select-none" id="vol-icon">🔊</span>
+        <input type="range" id="volume-slider" min="0" max="100" value="60"
+          class="flex-1 h-3 rounded-full appearance-none cursor-pointer"
+          style="background: linear-gradient(to right, #a78bfa 0%, #a78bfa 60%, rgba(255,255,255,0.2) 60%, rgba(255,255,255,0.2) 100%)">
+        <span class="text-white font-black text-base w-10 text-center" id="vol-value">60%</span>
+      </div>
+    </div>
+
+    <button id="start-btn" class="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-black py-4 rounded-2xl shadow-xl transition-all hover:scale-105 text-xl">
+      🚀 Почати гру!
+    </button>
+  </div>
+</div>
+
+<!-- ════════════════════════
+     ЕКРАН 2 — ГРА
+════════════════════════ -->
+<div id="game-screen" class="screen min-h-screen flex-col items-center px-2 py-4 overflow-auto">
+
+  <div class="text-center mb-2">
+    <h1 class="text-2xl md:text-3xl font-black text-white drop-shadow-lg">🏆 Знайди пару 🏆</h1>
+    <p id="diff-label" class="text-purple-200 text-xs mt-1"></p>
+  </div>
+
+  <!-- Бейджики гравців -->
+  <div id="players-bar" class="flex flex-wrap justify-center gap-2 mb-3 w-full max-w-3xl px-2"></div>
+
+  <!-- Індикатор ходу -->
+  <div class="bg-white/15 backdrop-blur rounded-2xl px-5 py-2 mb-3 text-center shadow-lg">
+    <span class="text-white/70 text-sm font-semibold">Зараз ходить:</span>
+    <span id="turn-name" class="text-yellow-300 font-black text-xl ml-2">—</span>
+    <span id="mode-label" class="ml-2 text-xs bg-white/20 text-white rounded-full px-2 py-0.5 font-semibold"></span>
+  </div>
+
+  <!-- Дошка -->
+  <div id="game-board" class="grid gap-2 p-3 bg-white/10 rounded-2xl backdrop-blur-sm mb-3"></div>
+
+  <!-- Статистика -->
+  <div class="flex items-center gap-3 flex-wrap justify-center mb-2">
+    <div class="bg-white/90 rounded-xl px-4 py-2 text-center min-w-[70px]">
+      <div class="text-xl font-black text-purple-600" id="moves-count">0</div>
+      <div class="text-xs text-gray-500 font-semibold">Ходів</div>
+    </div>
+    <div class="bg-white/90 rounded-xl px-4 py-2 text-center min-w-[70px]">
+      <div class="text-xl font-black text-green-600" id="pairs-found">0</div>
+      <div class="text-xs text-gray-500 font-semibold">Пар знайдено</div>
+    </div>
+    <div class="bg-white/90 rounded-xl px-4 py-2 text-center min-w-[70px]">
+      <div class="text-xl font-black text-pink-600" id="timer">00:00</div>
+      <div class="text-xs text-gray-500 font-semibold">Час</div>
+    </div>
+    <button id="menu-btn" class="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-2 px-5 rounded-full shadow-lg transition hover:scale-105 text-sm">
+      🏠 Меню
+    </button>
+  </div>
+</div>
+
+<!-- ════════════════════════
+     МОДАЛКА ПЕРЕМОГИ
+════════════════════════ -->
+<div id="win-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 hidden overflow-auto py-8">
+  <div id="win-content" class="bg-white rounded-3xl p-6 md:p-8 text-center w-full max-w-lg mx-4 shadow-2xl">
+    <div class="text-5xl mb-2">🎉🏆🎉</div>
+    <h2 class="text-3xl font-black text-purple-600 mb-1">Гру завершено!</h2>
+    <p class="text-gray-500 mb-4">Підсумкові результати</p>
+
+    <div id="scoreboard" class="space-y-2 mb-5"></div>
+
+    <div class="bg-purple-50 rounded-xl p-3 mb-5 flex justify-around">
+      <div>
+        <div class="font-black text-purple-600 text-xl" id="final-moves">0</div>
+        <div class="text-xs text-gray-500">Всього ходів</div>
+      </div>
+      <div>
+        <div class="font-black text-pink-600 text-xl" id="final-time">00:00</div>
+        <div class="text-xs text-gray-500">Витрачено часу</div>
+      </div>
+    </div>
+
+    <div class="flex gap-3 justify-center flex-wrap">
+      <button id="play-again-btn" class="bg-gradient-to-r from-green-400 to-emerald-500 hover:from-green-500 hover:to-emerald-600 text-white font-black py-3 px-7 rounded-full shadow-lg transition hover:scale-105">
+        🎮 Ще раз!
+      </button>
+      <button id="menu-from-win-btn" class="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-black py-3 px-7 rounded-full shadow-lg transition hover:scale-105">
+        🏠 Меню
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ──────────────────────────────
+// ЕМОДЗІ (64 унікальних)
+// ──────────────────────────────
+const ALL_EMOJIS = [
+  '⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉',
+  '🥏','🎱','🪀','🏓','🏸','🏒','🏑','🥍',
+  '🏏','⛳','🪁','🛷','⛸️','🥌','⛷️','🏂',
+  '🤺','🏇','⛹️','🏋️','🚴','🚣','🏊','🤽',
+  '🏄','🧗','🤸','🎯','🎳','🎣','🎽','🏆',
+  '🥇','🥈','🥉','🏅','🎖️','🏵️','🤿','🛹',
+  '🛼','🪃','🥊','🥋','🎪','🎭','🎨','🎬',
+  '🎤','🎧','🎮','🎲','🧩','♟️','🚵','🤼'
+];
+
+// Кольори гравців
+const COLORS = [
+  'from-blue-400 to-blue-600',
+  'from-rose-400 to-rose-600',
+  'from-amber-400 to-orange-500',
+  'from-emerald-400 to-green-600',
+  'from-violet-400 to-purple-600',
+  'from-cyan-400 to-cyan-600',
+  'from-pink-400 to-fuchsia-600',
+  'from-lime-400 to-lime-600',
+];
+const DEFAULT_NAMES = ['Аліса','Богдан','Вікторія','Гліб','Дарина','Євген','Жанна','Іван'];
+
+// ──────────────────────────────
+// СТАН
+// ──────────────────────────────
+let playerCount = 2;
+let playerNames = [];           // рядки імен
+let players = [];               // об'єкти { name, score, color }
+let currentIdx = 0;
+let difficulty = 'easy';
+let turnMode = 'rotate';
+let gridCols = 4, gridRows = 4;
+let totalPairs = 0, foundPairs = 0;
+let moves = 0;
+let flippedCards = [];
+let isLocked = false;
+let seconds = 0;
+let timerInterval = null;
+
+// ──────────────────────────────
+// ЗВУКИ (Web Audio API)
+// ──────────────────────────────
+let audioCtx = null;
+let masterVolume = 0.6;
+
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function tone(freq, type, dur, vol = 0.22, delay = 0) {
+  try {
+    const ctx = getCtx();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = type;
+    o.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+    const v = vol * masterVolume;
+    g.gain.setValueAtTime(v, ctx.currentTime + delay);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + dur);
+    o.start(ctx.currentTime + delay);
+    o.stop(ctx.currentTime + delay + dur + 0.05);
+  } catch(e) {}
+}
+const sfxFlip  = () => tone(520,'sine',0.12,0.18);
+const sfxMatch = () => { tone(600,'sine',0.12,0.22); tone(800,'sine',0.15,0.22,0.12); tone(1050,'sine',0.22,0.22,0.26); };
+const sfxMiss  = () => { tone(260,'sawtooth',0.14,0.15); tone(210,'sawtooth',0.14,0.15,0.13); };
+const sfxWin   = () => [523,659,784,1047].forEach((f,i) => tone(f,'sine',0.3,0.28,i*0.13));
+
+// Повзунок гучності
+const volSlider = document.getElementById('volume-slider');
+const volValue  = document.getElementById('vol-value');
+const volIcon   = document.getElementById('vol-icon');
+
+function updateVolSliderStyle(val) {
+  volSlider.style.background = `linear-gradient(to right, #a78bfa 0%, #a78bfa ${val}%, rgba(255,255,255,0.2) ${val}%, rgba(255,255,255,0.2) 100%)`;
+  volValue.textContent = `${val}%`;
+  volIcon.textContent = val === 0 ? '🔇' : val < 40 ? '🔉' : '🔊';
+  masterVolume = val / 100;
+}
+
+volSlider.addEventListener('input', () => updateVolSliderStyle(+volSlider.value));
+updateVolSliderStyle(60);
+
+// ──────────────────────────────
+// ФОРМА ГРАВЦІВ
+// ──────────────────────────────
+function renderInputs() {
+  document.getElementById('player-count-label').textContent = `(${playerCount})`;
+  const list = document.getElementById('players-list');
+  list.innerHTML = '';
+  for (let i = 0; i < playerCount; i++) {
+    const saved = playerNames[i] || '';
+    const color = COLORS[i % COLORS.length];
+    const div = document.createElement('div');
+    div.className = 'flex items-center gap-2';
+    div.innerHTML = `
+      <div class="w-9 h-9 rounded-full bg-gradient-to-br ${color} flex items-center justify-center font-black text-white text-sm flex-shrink-0">${i+1}</div>
+      <input type="text" maxlength="16" value="${saved}" data-idx="${i}"
+        class="flex-1 bg-white/20 text-white placeholder-purple-300 font-semibold rounded-xl px-3 py-2 text-sm border border-white/20 focus:border-yellow-300"
+        placeholder="Гравець ${i+1}">
+    `;
+    list.appendChild(div);
+  }
+}
+
+function collectNames() {
+  playerNames = [];
+  document.querySelectorAll('#players-list input').forEach(inp => {
+    playerNames[+inp.dataset.idx] = inp.value.trim() || inp.placeholder;
+  });
+}
+
+document.getElementById('add-player-btn').addEventListener('click', () => {
+  collectNames(); playerCount++; renderInputs();
+});
+document.getElementById('remove-player-btn').addEventListener('click', () => {
+  if (playerCount <= 2) return;
+  collectNames(); playerCount--; renderInputs();
+});
+
+// Складність
+document.querySelectorAll('.diff-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.diff-btn').forEach(x => x.classList.remove('selected'));
+    b.classList.add('selected');
+    difficulty = b.dataset.diff;
+  });
+});
+
+// Режим
+document.querySelectorAll('.opt-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.opt-btn').forEach(x => x.classList.remove('selected'));
+    b.classList.add('selected');
+    turnMode = b.dataset.mode;
+  });
+});
+
+// ──────────────────────────────
+// СТАРТ ГРИ
+// ──────────────────────────────
+document.getElementById('start-btn').addEventListener('click', () => {
+  collectNames();
+  players = Array.from({ length: playerCount }, (_, i) => ({
+    name: playerNames[i] || `Гравець ${i+1}`,
+    score: 0,
+    color: COLORS[i % COLORS.length]
+  }));
+
+  if (difficulty === 'easy')   { gridCols = 4; gridRows = 4; }
+  if (difficulty === 'medium') { gridCols = 5; gridRows = 4; }
+  if (difficulty === 'hard')   { gridCols = 6; gridRows = 6; }
+
+  totalPairs = (gridCols * gridRows) / 2;
+  currentIdx = 0; moves = 0; foundPairs = 0; seconds = 0;
+  isLocked = false; flippedCards = [];
+
+  showScreen('game-screen');
+  buildGameUI();
+  buildBoard();
+  startTimer();
+});
+
+// ──────────────────────────────
+// UI ГРИ
+// ──────────────────────────────
+function buildGameUI() {
+  const labels = { easy:'Легкий рівень • 4×4', medium:'Середній рівень • 5×4', hard:'Важкий рівень • 6×6' };
+  document.getElementById('diff-label').textContent = labels[difficulty];
+  document.getElementById('mode-label').textContent = turnMode === 'rotate' ? '🔁 Хід переходить' : '🔥 Серія ходів';
+  document.getElementById('moves-count').textContent = '0';
+  document.getElementById('pairs-found').textContent = '0';
+  document.getElementById('timer').textContent = '00:00';
+  renderBadges();
+  updateTurn();
+}
+
+function renderBadges() {
+  const bar = document.getElementById('players-bar');
+  bar.innerHTML = '';
+  players.forEach((p, i) => {
+    const el = document.createElement('div');
+    el.id = `badge-${i}`;
+    el.className = `player-badge bg-gradient-to-br ${p.color} rounded-2xl px-3 py-2 text-center shadow-lg min-w-[80px]`;
+    el.innerHTML = `
+      <div class="text-white font-black text-sm leading-tight truncate max-w-[90px]">${p.name}</div>
+      <div class="text-white/80 text-xs font-semibold">⭐ <span id="score-${i}">0</span></div>
+    `;
+    bar.appendChild(el);
+  });
+}
+
+function updateTurn() {
+  document.getElementById('turn-name').textContent = players[currentIdx].name;
+  players.forEach((_, i) => {
+    document.getElementById(`badge-${i}`)?.classList.toggle('active', i === currentIdx);
+  });
+}
+
+// ──────────────────────────────
+// ДОШКА
+// ──────────────────────────────
+function buildBoard() {
+  const board = document.getElementById('game-board');
+  board.innerHTML = '';
+  board.style.gridTemplateColumns = `repeat(${gridCols}, 1fr)`;
+
+  const size = difficulty === 'hard' ? 62 : difficulty === 'medium' ? 72 : 80;
+  // ВИПРАВЛЕНО: один раз вибираємо унікальні емодзі, потім дублюємо
+  const selected = shuffle(ALL_EMOJIS).slice(0, totalPairs);
+  const deck = shuffle([...selected, ...selected]);
+
+  deck.forEach((emoji, idx) => {
+    const card = document.createElement('div');
+    card.className = 'card fly-in';
+    card.style.cssText = `
+      width:${size}px; height:${size}px;
+      --tx:${(Math.random()-.5)*700}px;
+      --ty:${(Math.random()-.5)*500}px;
+      --rot:${(Math.random()-.5)*360}deg;
+      animation-delay:${idx*.028}s;
+    `;
+    card.dataset.emoji = emoji;
+    card.innerHTML = `
+      <div class="card-inner">
+        <div class="card-front">
+          <span class="card-num">${String(idx+1).padStart(2,'0')}</span>
+          <span class="text-white text-3xl font-black">?</span>
+        </div>
+        <div class="card-back">
+          <span style="font-size:${size*.42}px">${emoji}</span>
+        </div>
+      </div>`;
+    card.addEventListener('click', () => onCardClick(card));
+    board.appendChild(card);
+  });
+}
+
+// ──────────────────────────────
+// ЛОГІКА
+// ──────────────────────────────
+function onCardClick(card) {
+  if (isLocked || card.classList.contains('flipped') || card.classList.contains('matched')) return;
+  if (flippedCards.length >= 2) return;
+
+  sfxFlip();
+  card.classList.add('flipped');
+  flippedCards.push(card);
+
+  if (flippedCards.length === 2) {
+    moves++;
+    document.getElementById('moves-count').textContent = moves;
+    isLocked = true;
+    setTimeout(checkMatch, 700);
+  }
+}
+
+function checkMatch() {
+  const [c1, c2] = flippedCards;
+  const hit = c1.dataset.emoji === c2.dataset.emoji;
+
+  if (hit) {
+    sfxMatch();
+    // Одразу знімаємо fly-in щоб анімація не перезапускалась
+    c1.classList.remove('fly-in');
+    c2.classList.remove('fly-in');
+    c1.classList.add('matched','celebrating');
+    c2.classList.add('matched','celebrating');
+    setTimeout(() => { c1.classList.remove('celebrating'); c2.classList.remove('celebrating'); }, 1400);
+
+    players[currentIdx].score++;
+    document.getElementById(`score-${currentIdx}`).textContent = players[currentIdx].score;
+
+    foundPairs++;
+    document.getElementById('pairs-found').textContent = foundPairs;
+    flippedCards = [];
+    isLocked = false;
+
+    if (foundPairs === totalPairs) { setTimeout(finishGame, 600); return; }
+
+    // rotate: після знахідки теж передає хід наступному
+    // streak: після знахідки гравець продовжує
+    if (turnMode === 'rotate') {
+      currentIdx = (currentIdx + 1) % players.length;
+    }
+    updateTurn();
+
+  } else {
+    sfxMiss();
+    setTimeout(() => {
+      c1.classList.remove('flipped');
+      c2.classList.remove('flipped');
+      flippedCards = [];
+      isLocked = false;
+
+      // В обох режимах після помилки — наступний гравець
+      currentIdx = (currentIdx + 1) % players.length;
+      updateTurn();
+    }, 500);
+  }
+}
+
+// ──────────────────────────────
+// ТАЙМЕР
+// ──────────────────────────────
+function startTimer() {
+  clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    seconds++;
+    document.getElementById('timer').textContent =
+      `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
+  }, 1000);
+}
+function stopTimer() { clearInterval(timerInterval); timerInterval = null; }
+function fmtTime(s) { return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; }
+
+// ──────────────────────────────
+// ФІНАЛ
+// ──────────────────────────────
+function finishGame() {
+  stopTimer();
+  sfxWin();
+  createConfetti();
+
+  const sorted = [...players].sort((a,b) => b.score - a.score);
+  const medals = ['🥇','🥈','🥉'];
+  const rankCss = [
+    'bg-gradient-to-r from-yellow-300 to-amber-400 text-amber-900',
+    'bg-gradient-to-r from-gray-200 to-gray-300 text-gray-700',
+    'bg-gradient-to-r from-orange-300 to-amber-600 text-white',
+  ];
+
+  const sb = document.getElementById('scoreboard');
+  sb.innerHTML = '';
+  sorted.forEach((p, rank) => {
+    const div = document.createElement('div');
+    div.className = `${rankCss[rank] || 'bg-purple-100 text-purple-900'} rounded-xl px-4 py-3 flex items-center justify-between shadow`;
+    div.innerHTML = `
+      <div class="flex items-center gap-3">
+        <span class="text-2xl">${medals[rank] || `${rank+1}.`}</span>
+        <span class="font-black text-lg">${p.name}</span>
+      </div>
+      <span class="font-black text-2xl">⭐ ${p.score}</span>
+    `;
+    sb.appendChild(div);
+  });
+
+  document.getElementById('final-moves').textContent = moves;
+  document.getElementById('final-time').textContent = fmtTime(seconds);
+
+  const modal = document.getElementById('win-modal');
+  const content = document.getElementById('win-content');
+  modal.classList.remove('hidden');
+  requestAnimationFrame(() => requestAnimationFrame(() => content.classList.add('visible')));
+}
+
+function hideWin() {
+  document.getElementById('win-content').classList.remove('visible');
+  setTimeout(() => document.getElementById('win-modal').classList.add('hidden'), 400);
+}
+
+// ──────────────────────────────
+// КОНФЕТІ
+// ──────────────────────────────
+function createConfetti() {
+  const colors = ['#667eea','#764ba2','#f093fb','#f5576c','#38ef7d','#11998e','#FFD700','#ff6b6b'];
+  for (let i = 0; i < 90; i++) {
+    const el = document.createElement('div');
+    el.className = 'confetti';
+    const sz = 6 + Math.random()*10;
+    el.style.cssText = `
+      left:${Math.random()*100}vw; top:-10px;
+      width:${sz}px; height:${sz}px;
+      background:${colors[i%colors.length]};
+      border-radius:${Math.random()>.5?'50%':'3px'};
+      --dur:${2+Math.random()*2.5}s;
+      --delay:${Math.random()*1.8}s;
+    `;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 6000);
+  }
+}
+
+// ──────────────────────────────
+// НАВІГАЦІЯ
+// ──────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function goMenu() {
+  stopTimer();
+  hideWin();
+  setTimeout(() => {
+    // повертаємо імена у форму
+    playerNames = players.map(p => p.name);
+    playerCount = players.length;
+    showScreen('setup-screen');
+    renderInputs();
+  }, 400);
+}
+
+document.getElementById('menu-btn').addEventListener('click', goMenu);
+document.getElementById('menu-from-win-btn').addEventListener('click', goMenu);
+
+document.getElementById('play-again-btn').addEventListener('click', () => {
+  hideWin();
+  setTimeout(() => {
+    players.forEach(p => p.score = 0);
+    currentIdx = 0; moves = 0; foundPairs = 0; seconds = 0;
+    isLocked = false; flippedCards = [];
+    buildGameUI();
+    buildBoard();
+    startTimer();
+  }, 420);
+});
+
+// ──────────────────────────────
+// УТИЛІТИ
+// ──────────────────────────────
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length-1; i > 0; i--) {
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+// Ініціалізація
+renderInputs();
+</script>
+</body>
+</html>
